@@ -38,7 +38,7 @@ ui <- fluidPage(
                                        "Deaths" = "Deaths",
                                        "Recovered" = "Recovered")),
                          numericInput(inputId = "min_cases", label = "minimum cases", value = 75, min = 1, max = 10000),
-                         numericInput(inputId = "num_label", label = "number of labels", value = 10, min = 0, max = 25),
+                         numericInput(inputId = "num_label", label = "number of labels", value = 10, min = 0, max = 25)
                      ),
                      
                          mainPanel(
@@ -48,7 +48,7 @@ ui <- fluidPage(
                  ),
         tabPanel("Age", plotOutput("agehist", height = 750)),
         tabPanel("Tests", plotOutput("test_plot", height = 750))
-    ),
+    )
     
     #,
     #p()#,
