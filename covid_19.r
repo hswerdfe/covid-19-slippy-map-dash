@@ -6,7 +6,8 @@ library(gganimate)
 library(gifski)
 library(wppExplorer)
 library(wbstats)
-G_base_url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-"
+#G_base_url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-"
+G_base_url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_"
 MIN_COUNT_START <- 75
 NUM_COUNTRIES_LABEL <- 10
 Highlight_country <- "Canada"
@@ -19,7 +20,7 @@ country_2_remove <- c("China","Cruise Ship")
 # get CSV File from URL link
 #
 covid_19_get_file <- function(type = "Confirmed", base_url = G_base_url){
-  full_url  <- paste0(base_url, type, ".csv")
+  full_url  <- paste0(base_url, tolower(type), "_global", ".csv")
   df_raw <- read_csv(full_url)
   df_raw$type <- type
   return(df_raw)
@@ -42,6 +43,8 @@ covid_19_get_data <- function(base_url = G_base_url, types = c("Confirmed", "Dea
     mutate(full_geo = paste0(province_state, "_", country_region))
 }  
 
+########################################
+#
 get_covid_19_International_compare <- function(){
   
   df_raw <- NULL
@@ -88,7 +91,7 @@ get_covid_19_International_compare <- function(){
 }
 # 
 # getwd()
-# get_covid_19_growth_compare_save(TYPE_CASE = "Confirmed" , fn_ext = ".png")
+# get_covid_19_growth_compare_save(TYPE_CASE = "Confirmed" , fn_ext = ".svg")
 
 ##############################3
 #
@@ -100,20 +103,116 @@ get_covid_19_growth_compare_save <- function(fn_base = "covid-19-growth",fn_ext 
   ggsave(file=fn, plot=p, width=10, height=8)
 }
 
+
+
+################################
+get_covid_19_new_vs_total_infections(TYPE_CASE = c("Confirmed"), 
+                                     lag_count = 7,
+                                     Highlight_country = "Canada",
+                                     country_2_remove = c("Diamond Princess") ,
+                                     MIN_COUNT_START = 100, 
+                                     NUM_COUNTRIES_LABEL = 20){
+  
+  
+  df_raw <- NULL
+  df_raw <- covid_19_get_data(types = TYPE_CASE)
+  df<- df_raw 
+  
+  df_p <- 
+    df %>% 
+    group_by(country_region, date) %>% 
+    summarise(value = sum(value)) %>% 
+    group_by(country_region) %>% 
+    mutate(value_before = dplyr::lag(x = value, n = lag_count, order_by = date)) %>% #pull(value_before) %>% 
+    mutate(new_cases = value - value_before) %>% 
+    filter(value >= MIN_COUNT_START) %>% 
+    filter(!country_region %in% country_2_remove)
+  
+  df_p_dt %>% distinct(new_cases)
+  df_p_dt <-
+  df_p %>% 
+    ungroup() %>% 
+    mutate(value = MIN_COUNT_START*2, 
+              new_cases = max(new_cases , na.rm = T)/2) %>% 
+    group_by(date) %>% 
+    summarise(value = MIN_COUNT_START*2, 
+              new_cases = max(new_cases, na.rm = T)/2,) %>% 
+    mutate(country_region := date) #%>% view()
+  
+   df_p_pt <- 
+    df %>% filter(country_region == Highlight_country) %>% 
+    group_by(full_geo, date) %>% 
+    summarise(value = sum(value)) %>% 
+    group_by(full_geo) %>% 
+    mutate(value_before = dplyr::lag(x = value, n = lag_count, order_by = date)) %>% #pull(value_before) %>% 
+    mutate(new_cases = value - value_before) %>% 
+    filter(value >= MIN_COUNT_START) %>% 
+    filter(!full_geo %in% country_2_remove) %>% 
+    rename(country_region := full_geo)
+  
+  
+  
+  
+  df_p_h <- df_p %>% filter(country_region == Highlight_country) 
+  
+  countries_to_label <- 
+    df_p %>% dplyr::count(country_region, sort = T) %>% head(NUM_COUNTRIES_LABEL) %>% pull(country_region)
+  df_p_l <- 
+    df_p %>% filter(country_region %in% countries_to_label)
+  
+  p<-
+  df_p %>% 
+    filter(country_region != Highlight_country) %>% 
+    ggplot(aes(x = value, y = new_cases, group = country_region, label = country_region))+
+             geom_point(color = "grey") +
+             geom_line(color = "grey") +
+    scale_y_log10() +
+    scale_x_log10() +
+    #scale_color_viridis() +
+    #facet_grid(cols = vars(type), scales = "free") +
+    annotation_logticks(sides = "lb") +
+    geom_text(data =df_p_l ) + 
+    #geom_text(data = df_p_dt, color = "grey", size = 3) +
+    guides(color = FALSE, fill = FALSE) +
+    theme_bw() +
+    labs(title = paste0("Global Covid-19 \n data date = ", max(df_p$date)), 
+         x = "Cummulitive Cases", y = "New Cases")
+  p<-
+  p + geom_point(data = df_p_h,   color = "red") +
+    geom_line(data = df_p_h, color = "red", size = 2) +
+    geom_label(data = df_p_h,fill = "red")
+    
+  
+  
+  p<-
+    p + geom_point(data = df_p_pt,   aes(color = country_region)) +
+    geom_line(data = df_p_pt, aes(color = country_region)) +
+    geom_label(data = df_p_pt , aes(fill = country_region))
+  
+  
+  
+  
+      
+    anim <- p +
+    transition_reveal(date)
+
+  animate(anim, nframes = 200, renderer = gifski_renderer("gganim.gif", width = 2024, height = 768), end_pause = 100)
+}
+  
 ######################################
 #
 #
+#get_covid_19_growth_compare(TYPE_CASE = "Confirmed", NUM_COUNTRIES_LABEL = 10, MIN_COUNT_START = 100, country_2_remove = c("Cruise ship") )
+#get_covid_19_growth_compare(TYPE_CASE = "Deaths", country_2_remove = c("Cruise ship") , NUM_COUNTRIES_LABEL = 12, MIN_COUNT_START = 20)
 #
-#get_covid_19_growth_compare(TYPE_CASE = "Recovered", country_2_remove = c("Cruise ship") , NUM_COUNTRIES_LABEL = 12)
-#
-get_covid_19_growth_compare <- function(TYPE_CASE = "Recovered" , MIN_COUNT_START = 75, 
-                                        NUM_COUNTRIES_LABEL = 10,
+get_covid_19_growth_compare <- function(TYPE_CASE = c("Deaths", "Confirmed") , MIN_COUNT_START = 100, 
+                                        NUM_COUNTRIES_LABEL = 15,
                                         Highlight_country = "Canada",
-                                        country_2_remove = c("China","Cruise Ship") 
+                                        country_2_remove = c("China","Diamond Princess") 
                                         ){
   
   df_raw <- NULL
-  df_raw <- covid_19_get_data()
+  df_raw <- covid_19_get_data(types = TYPE_CASE)
   df<- df_raw 
   
   #####################3
@@ -146,8 +245,41 @@ get_covid_19_growth_compare <- function(TYPE_CASE = "Recovered" , MIN_COUNT_STAR
     mutate(delta_dates = date_since - lag(date_since, n = 1), delta_value = value - lag(value, n = 1)) %>% 
     mutate(const = (value / lag(value, n = 1))/as.integer(delta_dates)) %>% 
     filter(!(country_region %in% country_2_remove)) %>%
-    filter(type == TYPE_CASE) %>% 
+    filter(type %in% TYPE_CASE) %>% 
     drop_na()
+  
+  
+  df_p_pt <- 
+    df %>% 
+    filter(country_region == Highlight_country) %>% 
+    select(-country_region) %>% 
+    rename(country_region := province_state) %>% 
+    arrange(date, country_region) %>% 
+    #group_by(full_geo, lat, long, type, country_region, province_state) %>% 
+    
+    group_by( type, country_region, date) %>% 
+    #group_by( type, province_state, date) %>% 
+    summarise(value = sum(value)) %>% 
+    filter(value > MIN_COUNT_START) %>% ungroup() %>% 
+    group_by( type, country_region) %>% 
+    #group_by( type, province_state) %>% 
+    
+    mutate(date_min = min(date)) %>% 
+    ungroup() %>% 
+    mutate(date_since = date - date_min) %>% 
+    mutate(delta_dates = date_since - lag(date_since, n = 1), delta_value = value - lag(value, n = 1)) %>% 
+    mutate(const = (value / lag(value, n = 1))/as.integer(delta_dates)) %>% 
+    filter(!(country_region %in% country_2_remove)) %>%
+    filter(type %in% TYPE_CASE) %>% 
+    drop_na()
+
+
+  df_p_pt_l <- 
+    df_p_pt %>% 
+    group_by(country_region) %>% 
+    slice(which.max(date)) %>% 
+    mutate(lbl = paste0(country_region, "\n", value))
+  
   
   longest_countries <-
   df_p %>% #pull(province_state) %>% unique()
@@ -171,17 +303,28 @@ get_covid_19_growth_compare <- function(TYPE_CASE = "Recovered" , MIN_COUNT_STAR
     #mutate(lbl = paste(country_region, "\ncases=", value,"\ndays later=", date_since)) %>% 
     mutate(lbl_short = paste(country_region, "\n", value)) %>% 
     #mutate(lbl_short = paste(province_state, "\n", value)) %>% 
-    group_by(country_region) %>% 
+    group_by(country_region, type) %>% 
     #group_by(province_state) %>% 
     slice(which.max(date)) %>% 
     ungroup()
   
   
-  df_dt <- df_p %>% distinct(date) %>% arrange(date)
-  df_dt$lbl = as.character(df_dt$date) 
-  df_dt$x = 7
-  df_dt$y = 20000
-  df_dt<-df_dt %>% slice(which.max(date))
+  df_dt <- 
+    df_p %>% 
+    group_by(type) %>% 
+    mutate(x = max(date_since) *0.05,
+           y = 0.9 * max(value), 
+           lbl = as.character(date)) %>% 
+    slice(which.max(date))
+  
+  
+  # %>% slice(which.max(date))
+  # 
+  # arrange(date)
+  # df_dt$lbl = as.character(df_dt$date) 
+  # df_dt$x = 7
+  # df_dt$y = max(df_p$value) * 0.9
+  # df_dt<-df_dt %>% slice(which.max(date))
 
   #######################################
   # Plot the points and lines
@@ -189,14 +332,15 @@ get_covid_19_growth_compare <- function(TYPE_CASE = "Recovered" , MIN_COUNT_STAR
     df_p %>%
     ggplot(aes(x = date_since, y = value, color = country_region), color = "grey", alpha = 0.5) + 
     #ggplot(aes(x = date_since, y = value, color = province_state), color = "grey", alpha = 0.5) + 
-    geom_point() + 
-    geom_line(aes(group = country_region)) + 
+    geom_point(color = "grey") + 
+    geom_line(aes(group = country_region), color = "grey") + 
     #geom_line(aes(group = province_state)) + 
-    geom_text(data = df_dt, aes(x= x, y= y, label = lbl), size=8, color = "grey") +
+    geom_text(data = df_dt, aes(x= x, y= y, label = lbl), size=8, color = "grey", hjust = 0) +
     #geom_smooth(aes(group = country_region), method = "lm", se = F) + 
     #geom_smooth(inherit.aes = F, mapping = aes(x = date_since, y = value), size = 2, color = "black") +
     scale_y_log10() +
     #scale_color_viridis() +
+    facet_grid(cols = vars(type), scales = "free") +
     annotation_logticks(sides = "l") +
     theme_bw() +
     theme(legend.position = "none")
@@ -211,9 +355,15 @@ get_covid_19_growth_compare <- function(TYPE_CASE = "Recovered" , MIN_COUNT_STAR
     geom_line(data = df_p%>% filter(country_region == Highlight_country), color = "red", size = 2) 
     #geom_smooth(data = df_p%>% filter(country_region == Highlight_country), method = "lm", color = "black", size = 1, fullrange=TRUE, linetype = "dashed") + 
   
+  p<-
+    p + 
+    geom_point(data = df_p_pt, size = 1.5) + 
+    geom_line(data = df_p_pt , size = 1.5) +
+    geom_label_repel(data = df_p_pt_l , mapping = aes(label = lbl, color = country_region))#, color = "black")
+  
   p <- p +  
     labs(caption = paste0("data = ", "John Hopkins University"),
-         x = paste0("Days Since ",MIN_COUNT_START , " infections."), y = "Number Of Cases", 
+         x = paste0("Days Since ",MIN_COUNT_START , " counts"), y = "Count",#paste0("Number Of ", TYPE_CASE), 
          title = paste0("COVID-19 Growth By Country\nlast day of data = ", MAX_DATE)) 
   #p
   
@@ -234,12 +384,63 @@ get_covid_19_growth_compare <- function(TYPE_CASE = "Recovered" , MIN_COUNT_STAR
   # 
   # 
   # 
-  
-}  
 
+}
 
-
-
+# country_list_raw <- wbstats::wb(indicator = "SP.POP.TOTL", startdate = 2018, enddate = 2018) %>% as_tibble()
+# country_list <- country_list_raw
+# country_list <- 
+#   country_list %>% 
+#   select(value, country) %>%
+#   rename(pop := value)
+# df_raw <- covid_19_get_data(types = TYPE_CASE)
+# 
+# a <- df_raw %>% left_join(country_list, by = c("country_region" = "country"))
+# 
+# a %>% filter(is.na(pop)) %>% distinct(country_region) %>% view()
+# 
+# b <- a %>% mutate(value = 10^6 *value / pop)
+# 
+# 
+# df_raw <- b
+# a %>% count(date)
+# df_raw <- NULL
+# df_raw <- covid_19_get_data(types = TYPE_CASE)
+# df <- df_raw
+# df %>% 
+#   group_by(country_region, type, date) %>% 
+#   summarise(value = sum(value)) %>% 
+#   pivot_wider(names_from = type, values_from = value) %>% 
+#   mutate(death_rate = Deaths/Confirmed) %>% 
+#   filter(Deaths >= 10 & Confirmed >= 100) %>% 
+#   ggplot(aes(x = death_rate)) +
+#   #geom_density() +
+#   geom_histogram(bins = 15, alpha = 0.5, color = "black") +
+#   geom_point(y=0) +
+#   #scale_x_log10() +
+#   #annotation_logticks(sides = "b") 
+#   theme_bw()
+#   
+#   
+# 
+# df %>% 
+#   group_by(country_region, type, date) %>% 
+#   summarise(value = sum(value)) %>% 
+#   pivot_wider(names_from = type, values_from = value) %>% 
+#   mutate(death_rate = Deaths/Confirmed) %>% 
+#   filter(Deaths >= 10 & Confirmed >= 100) %>% 
+#   filter(Deaths >= 10 & Confirmed >= 100) %>% 
+#   group_by(country_region) %>% 
+#   slice(which.max(date)) %>%
+#   ggplot(aes(x = Deaths, y = Confirmed)) + 
+#   geom_point(aes(color = death_rate)) +
+#   geom_text_repel(aes(label = country_region)) +
+#   #geom_path(aes(group =  country_region) )+
+#   scale_y_log10() +
+#   scale_x_log10() +
+#   annotation_logticks(sides = "lb") +
+#   #theme(legend.position = "none") + 
+#   geom_abline()
 
 
 
