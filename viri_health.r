@@ -55,11 +55,17 @@ cache_viri_health_data <- function(){
   for (nm in names(tlbList)){
     df <- tlbList[[nm]]
     print(nm)
-    print(df)
+    #print(df)
     write_feather(x = df, path = paste0("viri_health_", nm, ".feather"))
   }
 }
 
+
+
+########################################3
+#
+#
+#
 Get_viri_health_data <- function(type= "cases", how_old = Sys.Date())
 {
   fn <- paste0("viri_health_", type, ".feather")
@@ -68,12 +74,23 @@ Get_viri_health_data <- function(type= "cases", how_old = Sys.Date())
   }
   read_covid_19_UT_data()
 }
+
+
+
+########################################3
+#
+#
+#
 read_viri_health_data <- function(type= "cases"){
   fn <- paste0("viri_health_", type, ".feather")
   read_feather(fn)
 }
 
 
+########################################3
+#
+#
+#
 get_viri_health_age_hist <- function(){
   cases <- read_viri_health_data("cases")
   deaths <- read_viri_health_data("deaths")
@@ -82,37 +99,61 @@ get_viri_health_age_hist <- function(){
   d <- deaths %>% dplyr::count(Age) %>% mutate(type = "deaths")
   c <-cases %>% dplyr::count(Age) %>% mutate(type = "Infections")
   
-  p <- 
+  
+  df <- 
     bind_rows(d, c) %>% 
+    group_by(type) %>% 
+    mutate(base_num = sum(n))
+  
+  max_case_dt <- lubridate::parse_date_time(paste0(cases$Date, "-2020"), orders = "d-b-Y", locale = "us") %>% max()
+  max_death_dt <- lubridate::parse_date_time(paste0(deaths$Announced, "-2020"), orders = "d-b-Y", locale = "us") %>% max()
+  max_dt <- as.character(  max(max_death_dt, max_case_dt) )
+  
+  n_deaths <- nrow(deaths)
+  n_cases <- nrow(cases)
+  df_l <- 
+    df %>% 
+    group_by(type) %>%
+    mutate(base_num = sum(n)) %>% 
+    filter(!is.na(Age)) %>% 
+    ungroup() %>% 
+    group_by(type, base_num) %>%
+    summarise( vert = max(n)*4/5, hor = 1 ) %>% 
+    mutate(lbl = paste0(type," " ,base_num))
+    
+  p <- 
+    df %>% 
     filter(!is.na(Age)) %>% 
     #mutate(age_missing = is.na(Age)) %>% 
     ggplot(aes(y = n, x = Age, fill = type, label = n)) + 
     geom_col( ) + 
     geom_label(fill = "white") +
+    geom_text(data = df_l, mapping = aes(x = hor, y = vert, label = lbl) , fill = "white", size = 7, color = "grey", hjust  = "left") +
     facet_grid(rows = vars(type), scales = "free_y") + 
     scale_fill_manual(values = c("#000000", "#006400")) + 
-    labs (title = "Deaths and infections by age in Canada.", subtitle = "Source Virihealth.com, 2020-03-21") +
+    labs (title = "Deaths and infections by age in Canada.", subtitle = paste0("Source Virihealth.com, " , max_dt) ) +
     theme(legend.position = "none")
   #, cols = vars(age_missing))# +
     #theme_bw()
   p
 
   w_df <-
-    bind_rows(d, c) %>% 
+    df %>% 
     mutate(age_missing = is.na(Age)) %>% 
     group_by(age_missing, type) %>% 
     summarise(n = sum(n)) %>% 
     mutate(age_missing_lbl = ifelse(age_missing, "Age not reported", "Age is known")) %>% 
     mutate(Category = paste0(type, "- ", age_missing_lbl)) %>% 
-    mutate(f = 100*n/sum(n)) %>% 
+    ungroup() %>%
+    mutate(f = 3*100*n/sum(n)) %>% 
     arrange(desc(n))
   
-  parts <- w_df %>% pull(f)  
+  parts <- w_df %>% pull(f) %>% round()
   names(parts) <- w_df %>%  pull(Category)
-  q <- waffle(parts, title = "Covid-19 Deaths and infections\nwhen Age is reported in Canada.", colors = c("#0d98ba", "#006400", "#808080", "#000000"), rows = 23)
+  q <- waffle(parts, title = "Covid-19 Deaths and infections\nwhen Age is reported in Canada.", size = 1, colors = c("#0d98ba", "#006400", "#808080", "#000000"), rows = 20)
   
-  
-  plot_grid(p,q, labels = NULL )
+  q
+  plot_grid(p,q, labels = NULL ) 
   
     #filter(is.na(Age)) %>% 
   
@@ -120,6 +161,10 @@ get_viri_health_age_hist <- function(){
 
 
 
+########################################3
+#
+#
+#
 get_tests_plot <- function(){
   df <- read_viri_health_data("tests")
   df %>% 
@@ -207,8 +252,13 @@ agg_pnts <- function(df, grp = c("lon", "lat"), for_lbl = "for_geo", round_digit
 download_viri_health_data <- function(webpage_url = "https://virihealth.com/", crs_out = G_CRS_WGS){
   #########################
   # Dont do this all the time
-  webpage <- xml2::read_html(webpage_url)
+  #webpage <- xml2::read_html(webpage_url)
   
+  library(curl)
+  #req <- curl_fetch_memory("https://virihealth.com/")
+  webpage <- xml2::read_html("C:/Users/hswerdfe/Documents/Projects/covid_19/dashboard/slippy_map/virihealth.html")
+  #req <- curl_fetch_memory("https://eu.httpbin.org/get?foo=123")
+  #str(req)
   
   ret_val <- list()
   ret_val[["totals"]] <- rvest::html_table(webpage)[[1]] %>% 
